@@ -7,13 +7,19 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score
 
-# Paths to ISIC dataset
-image_dir = "./data/images/"
-mask_dir = "./data/masks/"
-
-kmeans = KMeans(n_clusters=2, random_state=0)
-gmm = GaussianMixture(n_components=2, random_state=0)
-
+def postprocess(masks, mode="open", kernel_size=5, iters=1):
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    if mode == "open":
+        new_masks = [cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=iters) for mask in masks]
+    elif mode == "close":
+        new_masks = [cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=iters) for mask in masks]
+    elif mode == "erosion":
+        new_masks = [cv2.erode(mask, kernel, iterations=iters) for mask in masks]
+    elif mode == "dilation":
+        new_masks = [cv2.dilate(mask, kernel, iterations=iters) for mask in masks]
+    else:
+        new_masks = masks
+    return new_masks
 
 def fix_labels(pred_masks, gt_masks, lesion_positive=True):
     """
@@ -37,21 +43,6 @@ def fix_labels(pred_masks, gt_masks, lesion_positive=True):
         fixed_preds.append(pred)
 
     return fixed_preds
-
-
-def postprocess(masks, mode="open", kernel_size=5):
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
-    if mode == "open":
-        new_masks = [cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) for mask in masks]
-    elif mode == "close":
-        new_masks = [cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel) for mask in masks]
-    elif mode == "erosion":
-        new_masks = [cv2.erode(mask, kernel) for mask in masks]
-    elif mode == "dilation":
-        new_masks = [cv2.dilate(mask, kernel) for mask in masks]
-    else:
-        new_masks = masks
-    return new_masks
 
 
 def evaluate_masks(pred_masks, gt_masks):
@@ -149,7 +140,6 @@ def visualize_overlay(image, gt_mask, pred_mask, alpha=0.5):
     plt.tight_layout()
     plt.show()
 
-
 def predict_dataset(model, image_dir, mask_dir, num_samples=None):
     """
     Predict masks over dataset.
@@ -189,22 +179,17 @@ def predict_dataset(model, image_dir, mask_dir, num_samples=None):
 
     return pred_masks, gt_masks, img_np_list
 
+def lr_scheduler(optimizer, epoch=0, interval=10):
+    # decreases optimizer's learning rate
+    if epoch > 0 and epoch % interval == 0:
+        for param_group in optimizer.param_groups:
+            param_group["lr"] *= 0.5
+        print("Learning rate decreased")
+    return optimizer
 
-print("KMEANS")
-kmeans_pred, gt_masks, images = predict_dataset(
-    kmeans, image_dir, mask_dir, num_samples=10
-)
-kmeans_pred = fix_labels(kmeans_pred, gt_masks)
-# print("GMM")
-# gmm_pred, gt_masks = predict_dataset(gmm, image_dir, mask_dir, num_samples=10)
-
-evaluate_masks(kmeans_pred, gt_masks)
-
-for mode in [None, "close", "erosion", "dilation"]:
-    kmeans_pred = postprocess(kmeans_pred, mode=mode)
-    # kmeans_pred = fix_labels(kmeans_pred, gt_masks)
-    evaluate_masks(kmeans_pred, gt_masks)
-
-    for image, gt, pred in zip(images[6:8], gt_masks[6:8], kmeans_pred[6:8]):
-        visualize_overlay(image, gt, pred, alpha=0.5)
-        plt.close()
+def early_stop(val_loss, val_list, epoch=0, patience=6):
+    # early stopping
+    if val_loss >= min(val_list) and (epoch - np.argmin(np.array(val_list))) > patience:
+        print(f"Training stopped at epoch: {epoch}\n")
+        return True
+    return False
