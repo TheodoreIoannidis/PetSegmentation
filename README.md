@@ -1,13 +1,13 @@
 # ISIC 2018 Skin Lesion Segmentation
 
-This project explores **unsupervised and supervised image segmentation** methods applied to the **ISIC 2018 skin lesion dataset**. It compares simple segmentation techniques like **KMeans** and **Gaussian Mixture Models (GMM)** against the deep learning model **DeepLabv3** (from PyTorch's pretrained models). DeepLabv3 is finetuned on ISIC data, evaluated on the test set and its performance is compared to the baseline models.
+This project explores unsupervised and supervised image segmentation methods applied to the **ISIC 2018 skin lesion dataset**. It compares simple segmentation techniques like **KMeans** and **Gaussian Mixture Models (GMM)** against deep learning models (Unet and Inception-based architecture). The deep models are trained on ISIC data, evaluated on the test set and its performance is compared with the baseline models.
 
 ## Goals
 
 - Segment skin lesions from dermoscopic images.
-- Compare baseline (KMeans, GMM) with DeepLabv3 (and other deep models in the future).
+- Compare baseline unsupervised methods (KMeans, GMM) with Unet and a custom Inception-based network.
 - Evaluate masks using standard metrics: **IoU**, **Dice**, **Accuracy**.
-- Visualize results with clear overlays (predictions vs. ground truth).
+- Visualize results with overlays (predictions vs. ground truth).
 - Explore which morphological operations can improve the quality of the segmentation.
     (erosion, dilation, opening, closing)
 
