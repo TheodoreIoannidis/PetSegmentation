@@ -47,9 +47,10 @@ class InceptionSegment(nn.Module):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
 
     def forward(self, x):
+        height, width = x.shape[2], x.shape[3]
         x = self.inception1(x)
         x = self.inception2(x)
         x = self.inception3(x)
         x = self.conv1x1(x)
-        x = self.upsample(x)
+        x = F.interpolate(x, size=(height, width), mode='bilinear', align_corners=True)
         return x

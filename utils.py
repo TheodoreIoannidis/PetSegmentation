@@ -4,7 +4,6 @@ import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
 from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score
 
 def postprocess(masks, mode="open", kernel_size=5, iters=1):
@@ -160,8 +159,9 @@ def predict_dataset(model, image_dir, mask_dir, num_samples=None):
             mask_dir, img_name.replace(".jpg", "_segmentation.png")
         )
 
-        image_np = np.array(Image.open(img_path).convert("RGB"))
-        mask_np = np.array(Image.open(mask_path).convert("L"))
+        image_np = np.array(Image.open(img_path).convert("RGB").resize((128, 128)))
+        mask = Image.open(mask_path).convert("L").resize((128, 128))
+        mask_np = (np.array(mask) > 0).astype(np.uint8)
 
         h, w, _ = image_np.shape
         pixels = image_np.reshape((-1, 3)) / 255
@@ -178,18 +178,3 @@ def predict_dataset(model, image_dir, mask_dir, num_samples=None):
         img_np_list.append(image_np)
 
     return pred_masks, gt_masks, img_np_list
-
-def lr_scheduler(optimizer, epoch=0, interval=10):
-    # decreases optimizer's learning rate
-    if epoch > 0 and epoch % interval == 0:
-        for param_group in optimizer.param_groups:
-            param_group["lr"] *= 0.5
-        print("Learning rate decreased")
-    return optimizer
-
-def early_stop(val_loss, val_list, epoch=0, patience=6):
-    # early stopping
-    if val_loss >= min(val_list) and (epoch - np.argmin(np.array(val_list))) > patience:
-        print(f"Training stopped at epoch: {epoch}\n")
-        return True
-    return False

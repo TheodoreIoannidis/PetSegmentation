@@ -3,11 +3,6 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from utils import *
 
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
-from utils import predict_dataset, fix_labels, postprocess, evaluate_masks, visualize_overlay
-
 def run_unsupervised(model_name='kmeans', image_dir='./data/images/', mask_dir='./data/masks/', num_samples=10, visualize=True):
     """
     Run unsupervised segmentation using KMeans or GMM.
@@ -33,7 +28,3 @@ def run_unsupervised(model_name='kmeans', image_dir='./data/images/', mask_dir='
             for image, gt, pred in zip(images[:2], gt_masks[:2], post_masks[:2]):
                 visualize_overlay(image, gt, pred, alpha=0.5)
                 plt.close()
-
-# Optional CLI entry
-if __name__ == "__main__":
-    run_unsupervised(model_name='kmeans')
