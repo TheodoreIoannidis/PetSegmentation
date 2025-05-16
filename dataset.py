@@ -3,20 +3,17 @@ from torch.utils.data import Dataset
 from PIL import Image
 
 class ISICDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, transform=None):
+    def __init__(self, image_dir, mask_dir, transform=None, file_list=None):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.transform = transform
 
-        self.images = []
-        for img in os.listdir(image_dir):
-            if img.endswith(".jpg"):
-                mask_name = img.replace(".jpg", "_segmentation.png")
-                if os.path.exists(os.path.join(mask_dir, mask_name)):
-                    self.images.append(img)
-
-        print(f"Loaded {len(self.images)} images with masks.")
-
+        if file_list:
+            with open(file_list, "r") as f:
+                self.images = [line.strip() for line in f.readlines()]
+        else:  
+            self.images = [img for img in os.listdir(image_dir) if img.endswith(".jpg")]
+    
     def __len__(self):
         return len(self.images)
 

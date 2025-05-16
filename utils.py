@@ -1,9 +1,9 @@
-import os
+import torch
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
-from sklearn.cluster import KMeans
+from torchvision import transforms
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score
 
 def postprocess(masks, mode="open", kernel_size=5, iters=1):
@@ -26,23 +26,35 @@ def fix_labels(pred_masks, gt_masks, lesion_positive=True):
     If lesion_positive=True, final output has lesion as 1.
     """
     fixed_preds = []
+
     for pred, gt in zip(pred_masks, gt_masks):
+        pred = pred.astype(np.uint8)
+        gt = (gt > 0).astype(np.uint8)
+
+        # Flatten for metric comparison
         pred_flat = pred.flatten()
-        gt_flat = (gt.flatten() > 0).astype(np.uint8)
+        gt_flat = gt.flatten()
 
-        acc0 = accuracy_score(gt_flat, (pred_flat == 0))
-        acc1 = accuracy_score(gt_flat, (pred_flat == 1))
+        # Try both label assignments
+        iou_0 = jaccard_score(gt_flat, (pred_flat == 0))
+        iou_1 = jaccard_score(gt_flat, (pred_flat == 1))
 
-        if acc1 > acc0:
-            pred = 1 - pred  # Flip 0<->1 if needed
+        # Flip if label 0 gives better IoU
+        if iou_0 > iou_1:
+            pred = 1 - pred
 
-        if lesion_positive and np.sum(pred) < np.sum(1 - pred):
-            pred = 1 - pred  # Ensure lesion is 1
+        # Optional: ensure lesion is positive (class 1)
+        if lesion_positive:
+            # If GT has more lesion pixels than background, make sure pred does too
+            gt_lesion_ratio = np.sum(gt) / gt.size
+            pred_lesion_ratio = np.sum(pred) / pred.size
+
+            if pred_lesion_ratio < 0.5 and gt_lesion_ratio > 0.5:
+                pred = 1 - pred
 
         fixed_preds.append(pred)
 
     return fixed_preds
-
 
 def evaluate_masks(pred_masks, gt_masks):
     """
@@ -138,43 +150,3 @@ def visualize_overlay(image, gt_mask, pred_mask, alpha=0.5):
 
     plt.tight_layout()
     plt.show()
-
-def predict_dataset(model, image_dir, mask_dir, num_samples=None):
-    """
-    Predict masks over dataset.
-    Returns: predicted masks list, ground truth masks list.
-    """
-    images = [img for img in os.listdir(image_dir) if img.endswith(".jpg")]
-
-    if num_samples:
-        images = np.random.choice(images, size=num_samples, replace=False)
-
-    pred_masks = []
-    gt_masks = []
-    img_np_list = []
-
-    for img_name in images:
-        img_path = os.path.join(image_dir, img_name)
-        mask_path = os.path.join(
-            mask_dir, img_name.replace(".jpg", "_segmentation.png")
-        )
-
-        image_np = np.array(Image.open(img_path).convert("RGB").resize((128, 128)))
-        mask = Image.open(mask_path).convert("L").resize((128, 128))
-        mask_np = (np.array(mask) > 0).astype(np.uint8)
-
-        h, w, _ = image_np.shape
-        pixels = image_np.reshape((-1, 3)) / 255
-        model.fit(pixels)
-
-        if isinstance(model, KMeans):
-            segmented = model.labels_.reshape((h, w))
-        else:
-            segmented = model.predict(pixels).reshape((h, w))
-
-        segmented = segmented.astype(np.uint8)
-        pred_masks.append(segmented)
-        gt_masks.append(mask_np)
-        img_np_list.append(image_np)
-
-    return pred_masks, gt_masks, img_np_list
