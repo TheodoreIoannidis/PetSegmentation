@@ -1,9 +1,11 @@
 import numpy as np
-from dataset import ISICDataset
-from utils import *
-from torch.nn import functional as F
-from tqdm import tqdm
 import torch
+from utils import *
+from PIL import Image
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+from dataset import ISICDataset
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score
@@ -54,8 +56,8 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
 
             optimizer.zero_grad()
             outputs = model(images)
-            if isinstance(outputs, dict):  # for DeepLabV3
-                outputs = outputs["out"]
+            if isinstance(outputs, dict):
+                outputs = outputs.get("logits") or outputs.get("out")
 
             loss = F.cross_entropy(outputs, masks)
             loss.backward()
@@ -76,7 +78,7 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
                 images, masks = images.to(device), masks.to(device)
                 outputs = model(images)
                 if isinstance(outputs, dict):
-                    outputs = outputs["out"]
+                    outputs = outputs.get("logits") or outputs.get("out")
 
                 loss = F.cross_entropy(outputs, masks)
                 val_loss += loss.item()
@@ -107,100 +109,109 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
             print(f"Early stopping at epoch {epoch+1}")
             break
 
-
-def predict_and_visualize_single(model, image_path, mask_path=None, alpha=0.5):
-    """
-    Predicts a segmentation mask for a single image and visualizes the result.
-    """
-
-    # === Load and preprocess image
-    image = Image.open(image_path).convert('RGB')
-    original_np = np.array(image.resize((128,128)))  # for visualization
-    transform = transforms.Compose([
-        transforms.Resize((128,128)),
-        transforms.ToTensor()
-    ])
-    input_tensor = transform(image).unsqueeze(0).to(device)  # shape: [1, 3, H, W]
-
-    # === Run model prediction
-    model.eval()
-    with torch.no_grad():
-        output = model(input_tensor)
-        if isinstance(output, dict):  # e.g., DeepLabV3
-            output = output["out"]
-        pred_mask = torch.argmax(output.squeeze(), dim=0).cpu().numpy()  # shape: [H, W]
-
-    # === Load GT mask if provided
-    gt_mask = None
-    if mask_path:
-        gt = Image.open(mask_path).convert('L').resize((128, 128))
-        gt_mask = (np.array(gt) > 0).astype(np.uint8)
-
-    # === Visualization
-    plt.figure(figsize=(18, 6))
-
-    # Original Image
-    plt.subplot(1, 3, 1)
-    plt.imshow(original_np)
-    plt.title("Original Image")
-    plt.axis("off")
-
-    # Ground Truth
-    if gt_mask is not None:
-        gt_overlay = overlay_mask(original_np, gt_mask, color=(0, 255, 0), alpha=alpha)
-        plt.subplot(1, 3, 2)
-        plt.imshow(gt_overlay)
-        plt.title("Ground Truth Overlay (Green)")
-        plt.axis("off")
-    else:
-        plt.subplot(1, 3, 2)
-        plt.imshow(original_np)
-        plt.title("No Ground Truth Provided")
-        plt.axis("off")
-
-    # Prediction
-    pred_overlay = overlay_mask(original_np, pred_mask, color=(255, 0, 0), alpha=alpha)
-    plt.subplot(1, 3, 3)
-    plt.imshow(pred_overlay)
-    plt.title("Prediction Overlay (Red)")
-    plt.axis("off")
-
-    plt.tight_layout()
-    plt.show()
-
 def test_model(model, loader):
     """
     Predict masks for test set.
     Returns: pred_masks, gt_masks, original images
     """
     model.eval()
-    y_true, y_pred = [], []
-    gt_masks, pred_masks, images = [], [], []
+    gt_masks, pred_masks, image_list = [], [], []
 
     with torch.no_grad():
         for images, masks in loader:
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
             if isinstance(outputs, dict):
-                outputs = outputs["out"]
+                outputs = outputs.get("logits") or outputs.get("out")
+
             preds = torch.argmax(outputs, dim=1)
-
-            y_true.append(masks.cpu().numpy().flatten())
-            y_pred.append(preds.cpu().numpy().flatten())
-
             gt_masks.extend(masks.cpu().numpy())
             pred_masks.extend(preds.cpu().numpy())
-            images.extend(images.cpu().permute(0, 2, 3, 1).numpy() * 255)
+            image_list.extend((images.cpu().permute(0, 2, 3, 1).numpy() * 255).astype(np.uint8))
 
-    y_true = np.concatenate(y_true)
-    y_pred = np.concatenate(y_pred)
-    acc = accuracy_score(y_true, y_pred)
-    iou = jaccard_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred)
 
-    print(f"\nTest Set Metrics:")
-    print(f" - Accuracy: {acc:.4f}")
-    print(f" - IoU (Jaccard): {iou:.4f}")
-    print(f" - F1 Score (Dice): {f1:.4f}")
+    # Evaluate metrics (per-sample, mean-aggregated)
+    print("\nEvaluation Results:")
+    evaluate_masks(pred_masks, gt_masks)
 
-    return pred_masks, gt_masks, images
+    # Compute per-sample metrics
+    accs, ious, f1s = [], [], []
+    for pred, gt in zip(pred_masks, gt_masks):
+        pred_flat = pred.flatten()
+        gt_flat = gt.flatten()
+        accs.append(accuracy_score(gt_flat, pred_flat))
+        ious.append(jaccard_score(gt_flat, pred_flat))
+        f1s.append(f1_score(gt_flat, pred_flat))
+
+    # Plot metric distributions
+    metrics = {'Accuracy': accs, 'IoU': ious, 'F1 Score': f1s}
+    plt.figure(figsize=(10, 6))
+    for name, values in metrics.items():
+        plt.plot([name]*len(values), values, 'o', alpha=0.4, label=name)
+    plt.title("Per-sample Metric Distributions")
+    plt.ylabel("Score")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    return pred_masks, gt_masks, image_list
+
+# def predict_and_visualize_single(model, image_path, mask_path=None, alpha=0.5):
+#     """
+#     Predicts a segmentation mask for a single image and visualizes the result.
+#     """
+
+#     # === Load and preprocess image
+#     image = Image.open(image_path).convert('RGB')
+#     original_np = np.array(image.resize((128,128)))  # for visualization
+#     transform = transforms.Compose([
+#         transforms.Resize((128,128)),
+#         transforms.ToTensor()
+#     ])
+#     input_tensor = transform(image).unsqueeze(0).to(device)  # shape: [1, 3, H, W]
+
+#     # === Run model prediction
+#     model.eval()
+#     with torch.no_grad():
+#         output = model(input_tensor)
+#         if isinstance(output, dict):
+#             output = output.get("logits") or output.get("out")
+#         pred_mask = torch.argmax(output.squeeze(), dim=0).cpu().numpy()  # shape: [H, W]
+
+#     # === Load GT mask if provided
+#     gt_mask = None
+#     if mask_path:
+#         gt = Image.open(mask_path).convert('L').resize((128, 128))
+#         gt_mask = (np.array(gt) > 0).astype(np.uint8)
+
+#     # === Visualization
+#     plt.figure(figsize=(18, 6))
+
+#     # Original Image
+#     plt.subplot(1, 3, 1)
+#     plt.imshow(original_np)
+#     plt.title("Original Image")
+#     plt.axis("off")
+
+#     # Ground Truth
+#     if gt_mask is not None:
+#         gt_overlay = overlay_mask(original_np, gt_mask, color=(0, 255, 0), alpha=alpha)
+#         plt.subplot(1, 3, 2)
+#         plt.imshow(gt_overlay)
+#         plt.title("Ground Truth Overlay (Green)")
+#         plt.axis("off")
+#     else:
+#         plt.subplot(1, 3, 2)
+#         plt.imshow(original_np)
+#         plt.title("No Ground Truth Provided")
+#         plt.axis("off")
+
+#     # Prediction
+#     pred_overlay = overlay_mask(original_np, pred_mask, color=(255, 0, 0), alpha=alpha)
+#     plt.subplot(1, 3, 3)
+#     plt.imshow(pred_overlay)
+#     plt.title("Prediction Overlay (Red)")
+#     plt.axis("off")
+
+#     plt.tight_layout()
+#     plt.show()

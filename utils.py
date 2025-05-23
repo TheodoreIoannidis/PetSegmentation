@@ -1,9 +1,6 @@
-import torch
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from PIL import Image
-from torchvision import transforms
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score
 
 def postprocess(masks, mode="open", kernel_size=5, iters=1):
@@ -56,7 +53,7 @@ def fix_labels(pred_masks, gt_masks, lesion_positive=True):
 
     return fixed_preds
 
-def evaluate_masks(pred_masks, gt_masks):
+def evaluate_masks(pred_masks, gt_masks, flip_labels=False):
     """
     Evaluate predicted masks.
     Returns mean metrics (accuracy, iou, f1).
@@ -72,9 +69,6 @@ def evaluate_masks(pred_masks, gt_masks):
         acc0 = accuracy_score(gt_flat, (pred_flat == 0))
         acc1 = accuracy_score(gt_flat, (pred_flat == 1))
 
-        if acc1 > acc0:
-            pred_flat = 1 - pred_flat
-
         acc = accuracy_score(gt_flat, pred_flat)
         iou = jaccard_score(gt_flat, pred_flat)
         f1 = f1_score(gt_flat, pred_flat)
@@ -87,12 +81,9 @@ def evaluate_masks(pred_masks, gt_masks):
     mean_iou = np.mean(iou_list)
     mean_f1 = np.mean(f1_list)
 
-    print(f"Evaluation Results:")
-    print(f" - Mean Accuracy: {mean_acc:.4f}")
-    print(f" - Mean IoU (Jaccard): {mean_iou:.4f}")
-    print(f" - Mean F1 Score (Dice): {mean_f1:.4f}")
-
-    return mean_acc, mean_iou, mean_f1
+    print(f"Mean Accuracy: {mean_acc:.4f}")
+    print(f"Mean IoU (Jaccard): {mean_iou:.4f}")
+    print(f"Mean F1 Score (Dice): {mean_f1:.4f}")
 
 
 def overlay_mask(image, mask, color=(255, 0, 0), alpha=0.5):
@@ -122,7 +113,7 @@ def overlay_mask(image, mask, color=(255, 0, 0), alpha=0.5):
     return overlay.astype(np.uint8)
 
 
-def visualize_overlay(image, gt_mask, pred_mask, alpha=0.5):
+def visualize_overlay(image, gt_mask, pred_mask, post_mask=None, alpha=0.5):
     """
     Plot original image + overlay GT mask and Predicted mask.
     """

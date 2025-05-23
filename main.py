@@ -1,23 +1,21 @@
 # main.py
 import argparse
 from train import *
+from supervised import *
 from unsupervised import run_unsupervised  
-from inception import InceptionSegment
-from unet import UNet
 
 def main():
     # Argument parser
     parser = argparse.ArgumentParser(description="Segmentation Experiments")
     parser.add_argument('--mode', type=str, choices=['supervised', 'unsupervised'], default='supervised')
-    
-    parser.add_argument('--model', type=str, choices=['unet', 'inception'], default='unet')
+
+    parser.add_argument('--model', type=str, choices=['unet', 'inception', 'swin', 'gmm', ], default='unet')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=4)
     
     parser.add_argument('--img_dir', type=str, default='./data/images')
     parser.add_argument('--mask_dir', type=str, default='./data/masks')
 
-    parser.add_argument('--unsupervised_model', type=str, choices=['kmeans', 'gmm'], default='kmeans')
     parser.add_argument('--split_file', type=str, default='./splits/test.txt')
     parser.add_argument('--visualize', type=str, default='False')
     parser.add_argument('--post', type=str, choices=['none', 'open', 'close', 'erosion', 'dilation'], default='none',
@@ -25,14 +23,15 @@ def main():
 
     args = parser.parse_args()
 
-    if args.mode == 'supervised':
+    if args.model in ['unet', 'inception', 'swin']:
         if args.model == 'unet':
             model = UNet(num_classes=2)
         elif args.model == 'inception':
             model = InceptionSegment(num_classes=2)
-        
+        # elif args.model == 'swin':
+        #     model = SwinSegment(num_classes=2)
         try:
-            model.load_state_dict(torch.load(f"./{args.model}_model.pth"))
+            model.load_state_dict(torch.load(f"./{args.model}_model.pt"))
             print("Model loaded successfully.")
         except Exception as e:
             train(
@@ -52,16 +51,17 @@ def main():
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
         pred_masks, gt_masks, images = test_model(model, test_loader)
 
-    elif args.mode == 'unsupervised':
+    elif args.model in['gmm', 'kmeans']:
         pred_masks, gt_masks, images = run_unsupervised(
-            model_name=args.unsupervised_model,
+            model_name=args.model,
             image_dir=args.img_dir,
             mask_dir=args.mask_dir,
             file_list=args.split_file,
         )
-
+        pred_masks = fix_labels(pred_masks, gt_masks)
     print("\nRaw Mask results")
     evaluate_masks(pred_masks, gt_masks)
+    
     if args.post != 'none':
         pred_masks = postprocess(pred_masks, mode=args.post)
         print("\nPostprocessed Mask results")

@@ -1,5 +1,5 @@
 import os
-import matplotlib.pyplot as plt
+from PIL import Image
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from utils import *
