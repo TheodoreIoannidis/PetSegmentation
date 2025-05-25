@@ -7,9 +7,9 @@ from unsupervised import run_unsupervised
 def main():
     # Argument parser
     parser = argparse.ArgumentParser(description="Segmentation Experiments")
-    parser.add_argument('--mode', type=str, choices=['supervised', 'unsupervised'], default='supervised')
+    # parser.add_argument('--mode', type=str, choices=['supervised', 'unsupervised'], default='supervised')
 
-    parser.add_argument('--model', type=str, choices=['unet', 'inception', 'swin', 'gmm', ], default='unet')
+    parser.add_argument('--model', type=str, choices=['unet', 'inception', 'segformer', 'gmm', 'kmeans', 'ensemble'], default='unet')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=4)
     
@@ -23,15 +23,15 @@ def main():
 
     args = parser.parse_args()
 
-    if args.model in ['unet', 'inception', 'swin']:
+    if args.model in ['unet', 'inception', 'segformer']:
         if args.model == 'unet':
             model = UNet(num_classes=2)
         elif args.model == 'inception':
-            model = InceptionSegment(num_classes=2)
-        # elif args.model == 'swin':
-        #     model = SwinSegment(num_classes=2)
+            model = Inception(num_classes=2)
+        elif args.model == 'segformer':
+            model = Segformer(model_name='nvidia/segformer-b0-finetuned-ade-512-512', num_classes=2)
         try:
-            model.load_state_dict(torch.load(f"./{args.model}_model.pt"))
+            model.load_state_dict(torch.load(f"./{args.model}.pt"))
             print("Model loaded successfully.")
         except Exception as e:
             train(
@@ -51,7 +51,7 @@ def main():
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
         pred_masks, gt_masks, images = test_model(model, test_loader)
 
-    elif args.model in['gmm', 'kmeans']:
+    elif args.model in ['gmm', 'kmeans']:
         pred_masks, gt_masks, images = run_unsupervised(
             model_name=args.model,
             image_dir=args.img_dir,
@@ -59,9 +59,10 @@ def main():
             file_list=args.split_file,
         )
         pred_masks = fix_labels(pred_masks, gt_masks)
+
     print("\nRaw Mask results")
     evaluate_masks(pred_masks, gt_masks)
-    
+
     if args.post != 'none':
         pred_masks = postprocess(pred_masks, mode=args.post)
         print("\nPostprocessed Mask results")

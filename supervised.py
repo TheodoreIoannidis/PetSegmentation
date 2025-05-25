@@ -1,7 +1,8 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-# from transformers import AutoImageProcessor, SwinForSemanticSegmentation
+import torchvision.transforms as T
+from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 
 #=======================================
 #========= UNet Architecture ===========
@@ -94,9 +95,9 @@ class InceptionBlock(nn.Module):
         b4 = self.b4(x)
         return torch.cat([b1, b2, b3, b4], dim=1)
 
-class InceptionSegment(nn.Module):
+class Inception(nn.Module):
     def __init__(self, in_channels=3, num_classes=2):
-        super(InceptionSegment, self).__init__()
+        super(Inception, self).__init__()
         self.weights_init()
         self.inception1 = InceptionBlock(in_channels, 64)
         self.inception2 = InceptionBlock(256, 128)
@@ -122,14 +123,19 @@ class InceptionSegment(nn.Module):
 #=======================================
 #======= Swin Transformer ==============
 #=======================================
-# class SwinSegment(nn.Module):
-#     def __init__(self, model_name='microsoft/swin-tiny-patch4-window7-224', num_classes=2):
-#         super(SwinSegment, self).__init__()
-#         self.model = SwinForSemanticSegmentation.from_pretrained(model_name, num_labels=num_classes)
-#         self.processor = AutoImageProcessor.from_pretrained(model_name)
+class Segformer(nn.Module):
+    def __init__(self, model_name='nvidia/segformer-b0-finetuned-ade-512-512', num_classes=2):
+        super(Segformer, self).__init__()
+        self.model = SegformerForSemanticSegmentation.from_pretrained(
+            model_name,
+            num_labels=num_classes,
+            ignore_mismatched_sizes=True
+        )
+        self.processor = SegformerImageProcessor.from_pretrained(model_name)
+        self.normalizer = T.Normalize(mean=self.processor.image_mean, std=self.processor.image_std)
 
-#     def forward(self, x):
-#         # x shape: (B, C, H, W)
-#         # Normalize and resize via processor
-#         pixel_values = self.processor(images=x, return_tensors="pt").pixel_values.to(x.device)
-#         return self.model(pixel_values).logits  # Output shape: (B, num_classes, H', W')
+    def forward(self, x):
+        x = self.normalizer(x)
+        logits = self.model(pixel_values=x).logits  # Shape: [B, C, H', W']
+        logits = F.interpolate(logits, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=True)
+        return logits

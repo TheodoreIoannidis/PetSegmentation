@@ -48,7 +48,7 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
     for epoch in range(epochs):
         model.train()
         total_train_loss = 0
-        optimizer = lr_scheduler(optimizer, epoch=epoch, interval=10)
+        optimizer = lr_scheduler(optimizer, epoch=epoch, interval=2)
 
         loop = tqdm(train_loader, desc=f"Train Epoch [{epoch+1}/{epochs}]", leave=True)
         for images, masks in loop:
@@ -79,7 +79,6 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
                 outputs = model(images)
                 if isinstance(outputs, dict):
                     outputs = outputs.get("logits") or outputs.get("out")
-
                 loss = F.cross_entropy(outputs, masks)
                 val_loss += loss.item()
 
@@ -102,7 +101,7 @@ def train(model, img_dir, mask_dir, epochs=10, batch_size=4):
         # ====== Save best model ======
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), f'./{model.__class__.__name__.lower()}_model.pt')
+            torch.save(model.state_dict(), f'./{model.__class__.__name__.lower()}.pt')
 
         # ====== Early stopping ======
         if early_stop(avg_val_loss, val_losses, epoch=epoch, patience=5):
@@ -123,16 +122,10 @@ def test_model(model, loader):
             outputs = model(images)
             if isinstance(outputs, dict):
                 outputs = outputs.get("logits") or outputs.get("out")
-
             preds = torch.argmax(outputs, dim=1)
             gt_masks.extend(masks.cpu().numpy())
             pred_masks.extend(preds.cpu().numpy())
             image_list.extend((images.cpu().permute(0, 2, 3, 1).numpy() * 255).astype(np.uint8))
-
-
-    # Evaluate metrics (per-sample, mean-aggregated)
-    print("\nEvaluation Results:")
-    evaluate_masks(pred_masks, gt_masks)
 
     # Compute per-sample metrics
     accs, ious, f1s = [], [], []
@@ -155,63 +148,3 @@ def test_model(model, loader):
     plt.show()
 
     return pred_masks, gt_masks, image_list
-
-# def predict_and_visualize_single(model, image_path, mask_path=None, alpha=0.5):
-#     """
-#     Predicts a segmentation mask for a single image and visualizes the result.
-#     """
-
-#     # === Load and preprocess image
-#     image = Image.open(image_path).convert('RGB')
-#     original_np = np.array(image.resize((128,128)))  # for visualization
-#     transform = transforms.Compose([
-#         transforms.Resize((128,128)),
-#         transforms.ToTensor()
-#     ])
-#     input_tensor = transform(image).unsqueeze(0).to(device)  # shape: [1, 3, H, W]
-
-#     # === Run model prediction
-#     model.eval()
-#     with torch.no_grad():
-#         output = model(input_tensor)
-#         if isinstance(output, dict):
-#             output = output.get("logits") or output.get("out")
-#         pred_mask = torch.argmax(output.squeeze(), dim=0).cpu().numpy()  # shape: [H, W]
-
-#     # === Load GT mask if provided
-#     gt_mask = None
-#     if mask_path:
-#         gt = Image.open(mask_path).convert('L').resize((128, 128))
-#         gt_mask = (np.array(gt) > 0).astype(np.uint8)
-
-#     # === Visualization
-#     plt.figure(figsize=(18, 6))
-
-#     # Original Image
-#     plt.subplot(1, 3, 1)
-#     plt.imshow(original_np)
-#     plt.title("Original Image")
-#     plt.axis("off")
-
-#     # Ground Truth
-#     if gt_mask is not None:
-#         gt_overlay = overlay_mask(original_np, gt_mask, color=(0, 255, 0), alpha=alpha)
-#         plt.subplot(1, 3, 2)
-#         plt.imshow(gt_overlay)
-#         plt.title("Ground Truth Overlay (Green)")
-#         plt.axis("off")
-#     else:
-#         plt.subplot(1, 3, 2)
-#         plt.imshow(original_np)
-#         plt.title("No Ground Truth Provided")
-#         plt.axis("off")
-
-#     # Prediction
-#     pred_overlay = overlay_mask(original_np, pred_mask, color=(255, 0, 0), alpha=alpha)
-#     plt.subplot(1, 3, 3)
-#     plt.imshow(pred_overlay)
-#     plt.title("Prediction Overlay (Red)")
-#     plt.axis("off")
-
-#     plt.tight_layout()
-#     plt.show()
