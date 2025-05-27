@@ -49,7 +49,6 @@ def run_unsupervised(model_name='kmeans', image_dir='./data/images/', mask_dir='
     """
     Run unsupervised segmentation using KMeans or GMM on test set.
     """
-
     if model_name == 'kmeans':
         model = KMeans(n_clusters=2, random_state=0)
     elif model_name == 'gmm':

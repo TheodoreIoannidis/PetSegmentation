@@ -3,6 +3,9 @@ import torch
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+from supervised import UNet, Segformer, Inception
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 from torchvision import transforms
 from sklearn.metrics import accuracy_score, jaccard_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
 
@@ -177,11 +180,15 @@ def predict_and_visualize_single(model, image_path, postprocess_mode='none', alp
     ])
     input_tensor = transform(image).unsqueeze(0).to(device)
 
-    with torch.no_grad():
-        output = model(input_tensor)
-        if isinstance(output, dict):
-            output = output.get("logits") or output.get("out")
-        pred_mask = torch.argmax(output.squeeze(), dim=0).cpu().numpy()
+    if isinstance(model, (UNet, Segformer, Inception)):
+        with torch.no_grad():
+            output = model(input_tensor)
+            if isinstance(output, dict):
+                output = output.get("logits") or output.get("out")
+            pred_mask = torch.argmax(output.squeeze(), dim=0).cpu().numpy()
+    elif isinstance(model, (KMeans, GaussianMixture)):
+        model.fit(original_np.reshape(-1, 3))
+        pred_mask = model.predict(original_np.reshape(-1, 3)).reshape(128, 128)
 
     if postprocess_mode != 'none':
         pred_mask = postprocess([pred_mask], mode=postprocess_mode)[0]
